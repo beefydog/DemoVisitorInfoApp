@@ -5,79 +5,85 @@
 @inject IJSRuntime JSRuntime
 @using DemoVisitorInfoApp.Data
 @using Microsoft.EntityFrameworkCore
+@using DemoVisitorInfoApp.Extensions
 
 <h3>Click the button to collect visitor information:</h3>
 
 <button @onclick="OnCollectData">Collect Visitor Info</button>
 
 @code {
-    private string screenResolution = "Unknown";
 
     private async Task OnCollectData()
     {
         try
         {
-            var httpContext = HttpContextAccessor.HttpContext;
+            var httpContext = HttpContextAccessor?.HttpContext;
 
-            var screenData = await JSRuntime.InvokeAsync<ScreenData>("getScreenResolution");
-            string screenResolution = $"{screenData.Width}x{screenData.Height}";
-
-            string ipAddress = httpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty;
-            ipAddress = FormatIpAddress(ipAddress);
-
-            string browser = httpContext.Request.Headers["User-Agent"].ToString() ?? string.Empty;
-            string sessionId = httpContext.Session?.Id ?? string.Empty;
-
-            string referrerUrl = Navigation.Uri ?? string.Empty;
-            var uri = new Uri(referrerUrl);
-            string path = uri.AbsolutePath ?? string.Empty;
-            string queryString = uri.Query ?? string.Empty;
-
-            string cookies = GetCookies(httpContext) ?? string.Empty;
-            string operatingSystem = GetUserAgent("OS") ?? string.Empty;
-            string deviceType = GetUserAgent("Device") ?? string.Empty;
-
-            var existingVisit = await _context.Visits.FirstOrDefaultAsync(v =>
-                v.IPAddress == ipAddress &&
-                v.Browser == browser &&
-                v.SessionId == sessionId
-            );
-
-            if (existingVisit != null)
+            if (httpContext != null)
             {
-                existingVisit.LastVisitDate = DateTime.Now;
-                existingVisit.TotalVisits += 1;
-                existingVisit.LastReferrerUrl = referrerUrl;
-                existingVisit.LastPath = path;
-                existingVisit.LastQueryString = queryString;
-                _context.Visits.Update(existingVisit);
-            }
-            else
-            {
-                var newVisit = new Visit
-                    {
-                        VisitDate = DateTime.Now,
-                        LastVisitDate = DateTime.Now,
-                        TotalVisits = 1,
-                        IPAddress = ipAddress,
-                        Browser = browser,
-                        SessionId = sessionId,
-                        ScreenResolution = screenResolution,
-                        ReferrerUrl = referrerUrl,
-                        Path = path,
-                        QueryString = queryString,
-                        LastReferrerUrl = referrerUrl,
-                        LastPath = path,
-                        LastQueryString = queryString,
-                        Cookies = cookies,
-                        OperatingSystem = operatingSystem,
-                        DeviceType = deviceType
-                    };
+                var screenData = await JSRuntime.InvokeAsync<ScreenData>("getScreenResolution");
+                string screenResolution = $"{screenData.Width}x{screenData.Height}".TruncateTo(11);
 
-                await _context.Visits.AddAsync(newVisit);
-            }
+                string ipAddress = string.Empty;
+                if (httpContext.Connection?.RemoteIpAddress != null)
+                {
+                    ipAddress = FormatIpAddress(httpContext.Connection.RemoteIpAddress.ToString()).TruncateTo(45);
+                }
 
-            await _context.SaveChangesAsync();
+                string browser = httpContext.Request?.Headers["User-Agent"].FirstOrDefault()?.TruncateTo(500) ?? string.Empty;
+                string sessionId = httpContext.Session?.Id?.TruncateTo(100) ?? string.Empty;
+
+                string referrerUrl = Navigation.Uri?.TruncateTo(2048) ?? string.Empty;
+                var uri = new Uri(referrerUrl);
+                string path = uri.AbsolutePath?.TruncateTo(2048) ?? string.Empty;
+                string queryString = uri.Query?.TruncateTo(2048) ?? string.Empty;
+
+                string cookies = GetCookies(httpContext)?.TruncateTo(int.MaxValue) ?? string.Empty;
+                string operatingSystem = GetUserAgent("OS")?.TruncateTo(40) ?? string.Empty;
+                string deviceType = GetUserAgent("Device")?.TruncateTo(40) ?? string.Empty;
+
+                var existingVisit = await _context.Visits.FirstOrDefaultAsync(v =>
+                    v.IPAddress == ipAddress &&
+                    v.Browser == browser &&
+                    v.SessionId == sessionId
+                );
+
+                if (existingVisit != null)
+                {
+                    existingVisit.LastVisitDate = DateTime.Now;
+                    existingVisit.TotalVisits += 1;
+                    existingVisit.LastReferrerUrl = referrerUrl.TruncateTo(2048);
+                    existingVisit.LastPath = path.TruncateTo(2048);
+                    existingVisit.LastQueryString = queryString.TruncateTo(2048);
+                    _context.Visits.Update(existingVisit);
+                }
+                else
+                {
+                    var newVisit = new Visit
+                        {
+                            VisitDate = DateTime.Now,
+                            LastVisitDate = DateTime.Now,
+                            TotalVisits = 1,
+                            IPAddress = ipAddress,
+                            Browser = browser,
+                            SessionId = sessionId,
+                            ScreenResolution = screenResolution,
+                            ReferrerUrl = referrerUrl,
+                            Path = path,
+                            QueryString = queryString,
+                            LastReferrerUrl = referrerUrl,
+                            LastPath = path,
+                            LastQueryString = queryString,
+                            Cookies = cookies,
+                            OperatingSystem = operatingSystem,
+                            DeviceType = deviceType
+                        };
+
+                    await _context.Visits.AddAsync(newVisit);
+                }
+
+                await _context.SaveChangesAsync();
+            }
         }
         catch (Exception ex)
         {
@@ -85,56 +91,58 @@
         }
     }
 
-
-
-
     private string GetUserAgent(string type)
     {
-        var userAgent = HttpContextAccessor.HttpContext.Request.Headers["User-Agent"].ToString();
+        var httpContext = HttpContextAccessor?.HttpContext;
 
-        if (string.IsNullOrEmpty(userAgent))
-            return "Unknown";
-
-        if (type == "Browser")
+        if (httpContext != null && httpContext.Request?.Headers.ContainsKey("User-Agent") == true)
         {
-            if (userAgent.Contains("Edg"))
-                return "Microsoft Edge";
-            else if (userAgent.Contains("Chrome"))
-                return "Google Chrome";
-            else if (userAgent.Contains("Firefox"))
-                return "Mozilla Firefox";
-            else if (userAgent.Contains("Safari") && !userAgent.Contains("Chrome"))
-                return "Apple Safari";
-            else if (userAgent.Contains("OPR") || userAgent.Contains("Opera"))
-                return "Opera";
-        }
+            var userAgent = httpContext.Request.Headers["User-Agent"].FirstOrDefault() ?? string.Empty;
 
-        if (type == "OS")
-        {
-            if (userAgent.Contains("Windows NT"))
-                return "Windows";
-            else if (userAgent.Contains("Mac OS X"))
-                return "MacOS";
-            else if (userAgent.Contains("Linux"))
-                return "Linux";
-            else if (userAgent.Contains("Android"))
-                return "Android";
-            else if (userAgent.Contains("iPhone") || userAgent.Contains("iPad"))
-                return "iOS";
-        }
+            if (string.IsNullOrEmpty(userAgent))
+                return "Unknown";
 
-        if (type == "Device")
-        {
-            if (userAgent.Contains("Mobile"))
-                return "Mobile";
-            else if (userAgent.Contains("Tablet"))
-                return "Tablet";
-            else
-                return "Desktop";
-        }
+            if (type == "Browser")
+            {
+                if (userAgent.Contains("Edg"))
+                    return "Microsoft Edge";
+                else if (userAgent.Contains("Chrome"))
+                    return "Google Chrome";
+                else if (userAgent.Contains("Firefox"))
+                    return "Mozilla Firefox";
+                else if (userAgent.Contains("Safari") && !userAgent.Contains("Chrome"))
+                    return "Apple Safari";
+                else if (userAgent.Contains("OPR") || userAgent.Contains("Opera"))
+                    return "Opera";
+            }
 
+            if (type == "OS")
+            {
+                if (userAgent.Contains("Windows NT"))
+                    return "Windows";
+                else if (userAgent.Contains("Mac OS X"))
+                    return "MacOS";
+                else if (userAgent.Contains("Linux"))
+                    return "Linux";
+                else if (userAgent.Contains("Android"))
+                    return "Android";
+                else if (userAgent.Contains("iPhone") || userAgent.Contains("iPad"))
+                    return "iOS";
+            }
+
+            if (type == "Device")
+            {
+                if (userAgent.Contains("Mobile"))
+                    return "Mobile";
+                else if (userAgent.Contains("Tablet"))
+                    return "Tablet";
+                else
+                    return "Desktop";
+            }
+        }
         return "Unknown";
     }
+
 
     private string GetCookies(HttpContext httpContext)
     {
@@ -149,7 +157,7 @@
 
     private string FormatIpAddress(string ipAddress)
     {
-   
+
         if (System.Net.IPAddress.TryParse(ipAddress, out var address))
         {
             if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
@@ -160,7 +168,7 @@
             {
                 // IPv6
                 return address.ToString()
-                              .ToLower() 
+                              .ToLower()
                               .Replace("::", ":0000:0000:0000:0000:0000:0000:0000:")
                               .Split(':')
                               .Select(segment => segment.PadLeft(4, '0'))

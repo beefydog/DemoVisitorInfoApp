@@ -12,11 +12,11 @@ public class Visit
     public string DeviceType { get; set; } = string.Empty;
     public string ScreenResolution { get; set; } = string.Empty;
     public string ReferrerUrl { get; set; } = string.Empty;
-    public string LastReferrerUrl { get; set; } = string.Empty; // New
-    public string Path { get; set; } = string.Empty; // New
-    public string LastPath { get; set; } = string.Empty; // New
-    public string QueryString { get; set; } = string.Empty; // New
-    public string LastQueryString { get; set; } = string.Empty; // New
+    public string LastReferrerUrl { get; set; } = string.Empty; 
+    public string Path { get; set; } = string.Empty; 
+    public string LastPath { get; set; } = string.Empty; 
+    public string QueryString { get; set; } = string.Empty; 
+    public string LastQueryString { get; set; } = string.Empty; 
     public string SessionId { get; set; } = string.Empty;
     public string Cookies { get; set; } = string.Empty;
 }
