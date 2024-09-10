@@ -1,0 +1,173 @@
+﻿@page "/"
+@inject DemoVisitorInfoApp.Data.VisitContext _context
+@inject NavigationManager Navigation
+@inject IHttpContextAccessor HttpContextAccessor
+@inject IJSRuntime JSRuntime
+@using DemoVisitorInfoApp.Data
+@using Microsoft.EntityFrameworkCore
+
+<h3>Click the button to collect visitor information:</h3>
+
+<button @onclick="OnCollectData">Collect Visitor Info</button>
+
+@code {
+    private string screenResolution = "Unknown";
+
+    private async Task OnCollectData()
+    {
+        try
+        {
+            var httpContext = HttpContextAccessor.HttpContext;
+
+            var screenData = await JSRuntime.InvokeAsync<ScreenData>("getScreenResolution");
+            string screenResolution = $"{screenData.Width}x{screenData.Height}";
+
+            string ipAddress = httpContext.Connection.RemoteIpAddress?.ToString() ?? string.Empty;
+            ipAddress = FormatIpAddress(ipAddress);
+
+            string browser = httpContext.Request.Headers["User-Agent"].ToString() ?? string.Empty;
+            string sessionId = httpContext.Session?.Id ?? string.Empty;
+
+            string referrerUrl = Navigation.Uri ?? string.Empty;
+            var uri = new Uri(referrerUrl);
+            string path = uri.AbsolutePath ?? string.Empty;
+            string queryString = uri.Query ?? string.Empty;
+
+            string cookies = GetCookies(httpContext) ?? string.Empty;
+            string operatingSystem = GetUserAgent("OS") ?? string.Empty;
+            string deviceType = GetUserAgent("Device") ?? string.Empty;
+
+            var existingVisit = await _context.Visits.FirstOrDefaultAsync(v =>
+                v.IPAddress == ipAddress &&
+                v.Browser == browser &&
+                v.SessionId == sessionId
+            );
+
+            if (existingVisit != null)
+            {
+                existingVisit.LastVisitDate = DateTime.Now;
+                existingVisit.TotalVisits += 1;
+                existingVisit.LastReferrerUrl = referrerUrl;
+                existingVisit.LastPath = path;
+                existingVisit.LastQueryString = queryString;
+                _context.Visits.Update(existingVisit);
+            }
+            else
+            {
+                var newVisit = new Visit
+                    {
+                        VisitDate = DateTime.Now,
+                        LastVisitDate = DateTime.Now,
+                        TotalVisits = 1,
+                        IPAddress = ipAddress,
+                        Browser = browser,
+                        SessionId = sessionId,
+                        ScreenResolution = screenResolution,
+                        ReferrerUrl = referrerUrl,
+                        Path = path,
+                        QueryString = queryString,
+                        LastReferrerUrl = referrerUrl,
+                        LastPath = path,
+                        LastQueryString = queryString,
+                        Cookies = cookies,
+                        OperatingSystem = operatingSystem,
+                        DeviceType = deviceType
+                    };
+
+                await _context.Visits.AddAsync(newVisit);
+            }
+
+            await _context.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"An error occurred while processing the visit: {ex.Message}");
+        }
+    }
+
+
+
+
+    private string GetUserAgent(string type)
+    {
+        var userAgent = HttpContextAccessor.HttpContext.Request.Headers["User-Agent"].ToString();
+
+        if (string.IsNullOrEmpty(userAgent))
+            return "Unknown";
+
+        if (type == "Browser")
+        {
+            if (userAgent.Contains("Edg"))
+                return "Microsoft Edge";
+            else if (userAgent.Contains("Chrome"))
+                return "Google Chrome";
+            else if (userAgent.Contains("Firefox"))
+                return "Mozilla Firefox";
+            else if (userAgent.Contains("Safari") && !userAgent.Contains("Chrome"))
+                return "Apple Safari";
+            else if (userAgent.Contains("OPR") || userAgent.Contains("Opera"))
+                return "Opera";
+        }
+
+        if (type == "OS")
+        {
+            if (userAgent.Contains("Windows NT"))
+                return "Windows";
+            else if (userAgent.Contains("Mac OS X"))
+                return "MacOS";
+            else if (userAgent.Contains("Linux"))
+                return "Linux";
+            else if (userAgent.Contains("Android"))
+                return "Android";
+            else if (userAgent.Contains("iPhone") || userAgent.Contains("iPad"))
+                return "iOS";
+        }
+
+        if (type == "Device")
+        {
+            if (userAgent.Contains("Mobile"))
+                return "Mobile";
+            else if (userAgent.Contains("Tablet"))
+                return "Tablet";
+            else
+                return "Desktop";
+        }
+
+        return "Unknown";
+    }
+
+    private string GetCookies(HttpContext httpContext)
+    {
+        return string.Join("; ", httpContext.Request.Cookies.Keys);
+    }
+
+    private class ScreenData
+    {
+        public int Width { get; set; }
+        public int Height { get; set; }
+    }
+
+    private string FormatIpAddress(string ipAddress)
+    {
+   
+        if (System.Net.IPAddress.TryParse(ipAddress, out var address))
+        {
+            if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+            {
+                return string.Join(".", address.ToString().Split('.').Select(octet => octet.PadLeft(3, '0')));
+            }
+            else if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+            {
+                // IPv6
+                return address.ToString()
+                              .ToLower() 
+                              .Replace("::", ":0000:0000:0000:0000:0000:0000:0000:")
+                              .Split(':')
+                              .Select(segment => segment.PadLeft(4, '0'))
+                              .Aggregate((a, b) => $"{a}:{b}");
+            }
+        }
+
+        return ipAddress;
+    }
+}
